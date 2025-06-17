@@ -1,0 +1,49 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract SquiglerPresale is Ownable {
+    IERC20 public squigToken;
+    address public recipient;
+    uint256 public rate = 1_000_000; // 1 ETH = 1,000,000 SQUIG
+    uint256 public maxEth = 10 ether;
+    uint256 public totalEthRaised;
+    uint256 public endTime;
+
+    event TokensPurchased(address indexed buyer, uint256 amountETH, uint256 amountSQUIG);
+
+    constructor(address _token, address _recipient, uint256 _endTime) Ownable(msg.sender) {
+        require(_token != address(0), "Token address can't be 0");
+        require(_recipient != address(0), "Recipient can't be 0");
+        squigToken = IERC20(_token);
+        recipient = _recipient;
+        endTime = _endTime;
+    }
+
+    receive() external payable {
+        buyTokens();
+    }
+
+    function buyTokens() public payable {
+        require(block.timestamp < endTime, "Presale ended");
+        require(msg.value > 0, "Must send ETH");
+        require(totalEthRaised + msg.value <= maxEth, "Hard cap reached");
+
+        uint256 tokensToTransfer = msg.value * rate;
+        require(squigToken.balanceOf(address(this)) >= tokensToTransfer, "Not enough tokens");
+
+        totalEthRaised += msg.value;
+        squigToken.transfer(msg.sender, tokensToTransfer);
+        payable(recipient).transfer(msg.value);
+
+        emit TokensPurchased(msg.sender, msg.value, tokensToTransfer);
+    }
+
+    function withdrawUnsoldTokens() external onlyOwner {
+        require(block.timestamp >= endTime, "Presale not ended");
+        uint256 remaining = squigToken.balanceOf(address(this));
+        squigToken.transfer(owner(), remaining);
+    }
+}
